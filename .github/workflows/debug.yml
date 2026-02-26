@@ -32,7 +32,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.9'  # Cython 0.29.33 is not compatible with Python >3.9
+        python-version: '3.9'  # 匹配Cython 0.29.33兼容版本
 
     - name: Install system dependencies
       run: |
@@ -43,43 +43,60 @@ jobs:
             pkg-config zlib1g-dev libncurses5-dev \
             libncursesw5-dev cmake libffi-dev libssl-dev \
             curl unzip openjdk-17-jdk libltdl-dev
+        # 安装依赖后清理缓存
+        sudo apt-get clean
 
     - name: Install Buildozer and dependencies
       run: |
         python -m pip install --upgrade pip
-        # Install core dependencies with fixed versions (match buildozer.spec)
-        pip install buildozer cython==0.29.33 kivy==2.2.1 kivymd==1.2.0
-        # Install python-for-android (required for buildozer)
+        # 安装固定版本依赖（和buildozer.spec匹配）
+        pip install buildozer cython==0.29.33 kivy==2.2.1 kivymd==1.2.0 paho-mqtt
         pip install python-for-android
+        # 验证安装
+        pip list | grep -E "buildozer|cython|kivy|kivymd"
+
+    - name: Clean Buildozer cache (关键：避免旧配置干扰)
+      run: |
+        rm -rf .buildozer/ bin/ buildozer.spec~
+        mkdir -p bin  # 确保bin目录存在
 
     - name: Build APK with Buildozer
       run: |
         export PATH="$HOME/.local/bin:$PATH"
-        echo "Let's have a check:"
+        # 打印环境信息，方便调试
+        echo "=== 环境信息 ==="
         java -version
         python --version
         buildozer --version
+        echo "ANDROID_HOME: $ANDROID_HOME"
         
-        # Fix network issues for dependency download
-        export BUILDODER_ALLOW_PLATFORM_EXEC=1
+        # 修正环境变量（原拼写错误）
+        export BUILDOZER_ALLOW_PLATFORM_EXEC=1
         export USE_COLORS=0
         
-        # Start building APK in debug mode
+        # 开始构建，输出详细日志
+        echo "=== 开始构建APK ==="
         buildozer -v android debug 2>&1 | tee buildozer.log
         
-        # Copy generated APK to current directory
-        find . -name "*.apk" -exec cp {} ./ \; 2>/dev/null || true
+        # 查找所有APK文件，打印路径（关键调试信息）
+        echo "=== 查找APK文件 ==="
+        find . -name "*.apk" -type f
+        # 强制复制所有APK到bin目录（确保上传路径有文件）
+        find . -name "*.apk" -exec cp -f {} bin/ \; 2>/dev/null || echo "未找到APK文件"
 
     - name: Check if APK was built
       id: check-build
       run: |
-        if ls *.apk 1> /dev/null 2>&1; then
+        # 检查bin目录下的APK
+        if ls bin/*.apk 1> /dev/null 2>&1; then
           echo "BUILD_FINAL_SUCCESS=true" >> $GITHUB_OUTPUT
-          echo "Found APK files:"
-          ls -la *.apk
+          echo "=== 找到APK文件 ==="
+          ls -la bin/*.apk
         else
           echo "BUILD_FINAL_SUCCESS=false" >> $GITHUB_OUTPUT
-          echo "Didn't found APK files."
+          echo "=== 未找到APK文件 ==="
+          # 打印更多调试信息
+          cat buildozer.log | grep -E "error|failed|apk|bin" | tail -50
         fi
 
     - name: Upload APK artifact
@@ -87,7 +104,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: kivy-app-apk
-        path: bin/*.apk
+        path: bin/*.apk  # 现在bin目录一定有APK（如果构建成功）
         retention-days: 30
 
     - name: Upload build logs
@@ -97,4 +114,5 @@ jobs:
         name: build-logs
         path: |
           buildozer.log
+          .buildozer/android/platform/build-*/logs/*.log  # 补充Buildozer原生日志
         retention-days: 7
