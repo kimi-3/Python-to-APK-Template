@@ -1,4 +1,4 @@
-[app]
+app
 title = Esp32MobileApp
 package.name = esp32app
 package.domain = org.esp32
