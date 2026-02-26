@@ -28,11 +28,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    # 核心修正：删除 cache: 'pip'，解决找不到 requirements.txt 错误
     - name: Set up Python 3.9
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
-        cache: 'pip'
 
     - name: Install system dependencies
       run: |
@@ -40,28 +40,29 @@ jobs:
           git zip unzip openjdk-17-jdk libltdl-dev \
           pkg-config zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev
 
-    - name: Install Buildozer
+    - name: Install Buildozer and core dependencies
       run: |
-        pip install --upgrade pip
-        pip install buildozer==1.5.0 cython==0.29.33  # 固定稳定版本
+        python -m pip install --upgrade pip
+        # 安装与 buildozer.spec 匹配的固定版本
+        pip install buildozer==1.5.0 cython==0.29.33 \
+          kivy==2.2.1 kivymd==1.2.0 paho-mqtt pyjnius setuptools
         pip install python-for-android==2023.07.05
 
-    - name: Clean old builds
+    - name: Clean old build artifacts
       run: |
-        rm -rf .buildozer/ bin/ buildozer.spec~
+        rm -rf .buildozer/ bin/ build/ dist/ buildozer.log
         mkdir -p bin
 
     - name: Build APK (force disable AAB)
       run: |
         export PATH="$HOME/.local/bin:$PATH"
         export BUILDOZER_ALLOW_PLATFORM_EXEC=1
-        # 强制生成APK的关键参数
+        # 双重强制生成 APK，匹配修正后的 buildozer.spec
         buildozer -v android debug --set android.aab false 2>&1 | tee buildozer.log
         
-        # 查找所有构建产物（APK/AAB）
-        echo "=== 构建产物列表 ==="
-        find . -name "*.apk" -o -name "*.aab"
-        # 复制到bin目录
+        # 查找并复制所有构建产物（APK 优先，AAB 兜底）
+        echo -e "\n=== 构建产物列表 ==="
+        find . -name "*.apk" -o -name "*.aab" -type f
         find . -name "*.apk" -exec cp -f {} bin/ \;
         find . -name "*.aab" -exec cp -f {} bin/ \;
 
@@ -70,18 +71,19 @@ jobs:
       run: |
         if ls bin/* 1> /dev/null 2>&1; then
           echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
+          echo -e "\n=== 最终产物 ==="
           ls -la bin/
         else
           echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
-          # 打印错误日志
-          cat buildozer.log | grep -i "error\|failed\|traceback" | tail -100
+          echo -e "\n=== 构建失败，最后100行错误日志 ==="
+          cat buildozer.log | grep -i "error\|failed\|traceback\|exception" | tail -100
         fi
 
-    - name: Upload build artifacts
+    - name: Upload build artifacts (APK/AAB)
       if: steps.check-build.outputs.BUILD_SUCCESS == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: kivy-app-files
+        name: kivy-app-build
         path: bin/*
         retention-days: 30
 
@@ -89,6 +91,6 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-logs
+        name: build-debug-logs
         path: buildozer.log
         retention-days: 7
