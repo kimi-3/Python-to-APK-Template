@@ -8,7 +8,7 @@ source.include_exts = py,png,jpg,kv,atlas,ttf,otf,json#需要打包的文件类�
 version = 0.0.1
 #fullscreen = 0
 orientation = portrait
-requirements = python3,kivy==2.2.1,kivymd==1.2.0,libiconv,libffi,paho-mqtt#依赖库,后二为打包需要 the last two are needed for packaging
+requirements = python3,kivy==2.2.1,kivymd==1.2.0,libiconv,libffi,paho-mqtt
 #icon.filename = icon.png
 #presplash.filename = presplash.png
 entrypoint = main.py#主程序 main
